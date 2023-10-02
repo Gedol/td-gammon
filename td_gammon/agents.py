@@ -77,8 +77,22 @@ class TDAgent(Agent):
             # practical-issues-in-temporal-difference-learning, pag.3
             # ... the network's output P_t is an estimate of White's probability of winning from board position x_t.
             # ... the move which is selected at each time step is the move which maximizes P_t when White is to play and minimizes P_t when Black is to play.
-            best_action_index = int(np.argmax(values)) if self.color == WHITE else int(np.argmin(values))
+
+            #print ("as: values = " + str(values))
+            #print ("as: values type = " + str(type(values)))
+
+            dvalues = [v.detach() for v in values]
+
+            #print ("as: dvalues = " + str(dvalues))
+            #print ("as: dvalues type = " + str(type(dvalues)))
+            
+            
+            #best_action_index = int(np.argmax(values)) if self.color == WHITE else int(np.argmin(values))
+            # as modified below to use dvalus
+            best_action_index = int(np.argmax(dvalues)) if self.color == WHITE else int(np.argmin(dvalues))
             best_action = list(actions)[best_action_index]
+            #print ("as : best action index: " + str(best_action_index))
+            #print ("as : best action : " + str(best_action))
             env.counter = tmp_counter
 
         return best_action
@@ -110,6 +124,8 @@ class TDAgentGNU(TDAgent):
                 opponent = game.get_opponent(self.color)
                 observation = game.get_board_features(opponent) if env.model_type == 'nn' else env.render(mode='state_pixels')
                 values[i] = self.net(observation)
+
+                
                 game.restore_state(state)
 
             best_action_index = int(np.argmax(values)) if self.color == WHITE else int(np.argmin(values))
@@ -148,8 +164,13 @@ def evaluate_agents(agents, env, n_episodes):
         agent_color, first_roll, observation = env.reset()
         agent = agents[agent_color]
 
+        print ("gedol repo, agent first color: ", agent_color)
+        
         t = time.time()
 
+        as_move_strs = []
+        as_move_pstrs = []
+        
         for i in count():
 
             if first_roll:
@@ -162,7 +183,74 @@ def evaluate_agents(agents, env, n_episodes):
             action = agent.choose_best_action(actions, env)
             observation_next, reward, done, winner = env.step(action)
 
+            #print ("observation: ", observation)
+            #print ("agent color: ", agent_color)
+            #print ("agent: ", agent)
+            #print ("roll: ", roll)
+            #print ("action: ", action) # action is tuple, immuttable
+            saction = []
+            if action is None:
+                saction.append([None, None])
+            else:
+                for p in action:
+                    # hack
+                    increasing = True
+                    if p[0] == "bar":
+                        if p[1] > 17:
+                            increasing = False
+                    else:        
+                        if (p[0] > p[1]):
+                            increasing = False
+                    #print ("increasing", increasing)
+                    new_start = "bar"
+                    new_end = ""
+                    if (p[0] != "bar"):
+                        if increasing:
+                            new_start = 24 - p[0]
+                            new_end = 24 - p[1]
+                        else:
+                            new_start = 1 + p[0]
+                            new_end = 1 + p[1]
+                    else:
+                        if increasing:
+                            new_end = 24 - p[1]
+                        else:
+                            new_end = 1 + p[1]
+                    saction.append([new_start, new_end])
+
+            #print ("saction: ", saction) # saction is list, muttable
+            sroll = None
+            if (roll[0] < 0):
+                sroll = str(-roll[0]) + str(-roll[1])
+            else:
+                sroll = str(roll[0]) + str(roll[1])
+            #print ("sroll: ", sroll)
+            as_move_pstr = sroll + ": "
+            if saction is not None:
+                for sa in saction:
+                    as_move_pstr += str(sa[0]) + "/" + str(sa[1]) + " "
+            #print ("as_move_pstr", as_move_pstr)
+            as_move_pstrs.append(as_move_pstr)
+            if (len(as_move_pstrs) == 2):
+                as_move_strs.append (as_move_pstrs[0] + "\t" + as_move_pstrs[1])
+                as_move_pstrs = []
+
             if done:
+                #print("done!")
+                if (len(as_move_pstrs) == 1):
+                    as_move_strs.append(as_move_pstrs[0])                    
+                elif (len(as_move_pstrs) > 1):
+                    raise Exception ("as: e1")
+                #print("as_move_strs: ", as_move_strs)
+
+                as_move_count = 0
+                as_final_game_str = "as new game:\n"
+                for as_ms in as_move_strs:
+                    as_final_game_str += (str(as_move_count) + ") " + as_ms) + "\n"
+                    as_move_count += 1
+
+                print (as_final_game_str)
+                
                 if winner is not None:
                     wins[agent.color] += 1
                 tot = wins[WHITE] + wins[BLACK]
