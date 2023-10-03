@@ -42,12 +42,10 @@ def args_train(args):
     model_type = args.type
     seed = args.seed
 
-    eligibility = False
     optimizer = None
 
     if model_type == 'nn':
         net = TDGammon(hidden_units=hidden_units, lr=lr, lamda=lamda, init_weights=init_weights, seed=seed)
-        eligibility = True
         env = gym.make('gym_backgammon:backgammon-v0')
 
     else:
@@ -57,7 +55,7 @@ def args_train(args):
 
     if args.model and path_exists(args.model):
         # assert os.path.exists(args.model), print("The path {} doesn't exists".format(args.model))
-        net.load(checkpoint_path=args.model, optimizer=optimizer, eligibility_traces=eligibility)
+        net.load(checkpoint_path=args.model, optimizer=optimizer)
 
     if args.save_path and path_exists(args.save_path):
         # assert os.path.exists(args.save_path), print("The path {} doesn't exists".format(args.save_path))
@@ -66,10 +64,10 @@ def args_train(args):
         write_file(
             save_path, save_path=args.save_path, command_line_args=args, type=model_type, hidden_units=hidden_units, init_weights=init_weights, alpha=net.lr, lamda=net.lamda,
             n_episodes=n_episodes, save_step=save_step, start_episode=net.start_episode, name_experiment=name, env=env.spec.id, restored_model=args.model, seed=seed,
-            eligibility=eligibility, optimizer=optimizer, modules=[module for module in net.modules()]
+            optimizer=optimizer, modules=[module for module in net.modules()]
         )
 
-    net.train_agent(env=env, n_episodes=n_episodes, save_path=save_path, save_step=save_step, eligibility=eligibility, name_experiment=name)
+    net.train_agent(env=env, n_episodes=n_episodes, save_path=save_path, save_step=save_step, name_experiment=name)
 
 
 # ==================================== WEB GUI PARAMETERS ====================================
@@ -84,7 +82,7 @@ def args_gui(args):
             net = TDGammonCNN(lr=0.0001)
             env = gym.make('gym_backgammon:backgammon-pixel-v0')
 
-        net.load(checkpoint_path=args.model, optimizer=None, eligibility_traces=False)
+        net.load(checkpoint_path=args.model, optimizer=None)
 
         agents = {BLACK: TDAgent(BLACK, net=net), WHITE: HumanAgent(WHITE)}
         gui = GUI(env=env, host=args.host, port=args.port, agents=agents)
@@ -113,8 +111,8 @@ def args_evaluate(args):
             net1 = TDGammonCNN(lr=0.0001)
             env = gym.make('gym_backgammon:backgammon-pixel-v0')
 
-        net0.load(checkpoint_path=model_agent0, optimizer=None, eligibility_traces=False)
-        net1.load(checkpoint_path=model_agent1, optimizer=None, eligibility_traces=False)
+        net0.load(checkpoint_path=model_agent0, optimizer=None)
+        net1.load(checkpoint_path=model_agent1, optimizer=None)
 
         agents = {WHITE: TDAgent(WHITE, net=net1), BLACK: TDAgent(BLACK, net=net0)}
 
@@ -138,7 +136,7 @@ def args_gnubg(args):
         else:
             net0 = TDGammonCNN(lr=0.0001)
 
-        net0.load(checkpoint_path=model_agent0, optimizer=None, eligibility_traces=False)
+        net0.load(checkpoint_path=model_agent0, optimizer=None)
 
         gnubg_interface = GnubgInterface(host=host, port=port)
         gnubg_env = GnubgEnv(gnubg_interface, difficulty=difficulty, model_type=model_type)
@@ -194,7 +192,7 @@ def args_plot(args, parser):
                         net = TDGammonCNN(lr=0.0001)
                         env = gym.make('gym_backgammon:backgammon-pixel-v0')
 
-                    net.load(checkpoint_path=os.path.join(root, file), optimizer=None, eligibility_traces=False)
+                    net.load(checkpoint_path=os.path.join(root, file), optimizer=None)
 
                     if 'gnubg' in opponents:
                         tag_scalar_dict = {}

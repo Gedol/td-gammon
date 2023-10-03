@@ -12,7 +12,6 @@ from gym_backgammon.envs.backgammon import WHITE, BLACK
 
 torch.set_default_tensor_type('torch.DoubleTensor')
 
-
 class BaseModel(nn.Module):
     def __init__(self, lr, lamda, seed=123):
         super(BaseModel, self).__init__()
@@ -20,7 +19,6 @@ class BaseModel(nn.Module):
         self.lamda = lamda  # trace-decay parameter
         self.start_episode = 0
 
-        self.eligibility_traces = None
         self.optimizer = None
 
         torch.manual_seed(seed)
@@ -35,27 +33,23 @@ class BaseModel(nn.Module):
     def init_weights(self):
         raise NotImplementedError
 
-    def init_eligibility_traces(self):
-        self.eligibility_traces = [torch.zeros(weights.shape, requires_grad=False) for weights in list(self.parameters())]
-
     def checkpoint(self, checkpoint_path, step, name_experiment):
         path = checkpoint_path + "/{}_{}_{}.tar".format(name_experiment, datetime.datetime.now().strftime('%Y%m%d_%H%M_%S_%f'), step + 1)
-        torch.save({'step': step + 1, 'model_state_dict': self.state_dict(), 'eligibility': self.eligibility_traces if self.eligibility_traces else []}, path)
+        torch.save({'step': step + 1, 'model_state_dict': self.state_dict()}, path)
         print("\nCheckpoint saved: {}".format(path))
 
-    def load(self, checkpoint_path, optimizer=None, eligibility_traces=None):
+
+    # ** here!
+    def load(self, checkpoint_path, optimizer=None):
         checkpoint = torch.load(checkpoint_path)
         self.start_episode = checkpoint['step']
 
         self.load_state_dict(checkpoint['model_state_dict'])
 
-        if eligibility_traces is not None:
-            self.eligibility_traces = checkpoint['eligibility']
-
         if optimizer is not None:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
 
-    def train_agent(self, env, n_episodes, save_path=None, eligibility=False, save_step=0, name_experiment=''):
+    def train_agent(self, env, n_episodes, save_path=None, save_step=0, name_experiment=''):
         start_episode = self.start_episode
         n_episodes += start_episode
 
@@ -69,9 +63,6 @@ class BaseModel(nn.Module):
         start_training = time.time()
 
         for episode in range(start_episode, n_episodes):
-
-            if eligibility:
-                self.init_eligibility_traces()
 
             agent_color, first_roll, observation = env.reset()
             agent = agents[agent_color]
@@ -257,12 +248,8 @@ class TDGammon(BaseModel):
             parameters = list(self.parameters())
 
             for i, weights in enumerate(parameters):
-
-                # z <- gamma * lambda * z + (grad w w.r.t P_t)
-                self.eligibility_traces[i] = self.lamda * self.eligibility_traces[i] + weights.grad
-
-                # w <- w + alpha * td_error * z
-                new_weights = weights + self.lr * td_error * self.eligibility_traces[i]
+                # w <- w + alpha * td_error * (grad w w.r.t P_t)
+                new_weights = weights + self.lr * td_error * weights.grad
                 weights.copy_(new_weights)
 
         return td_error
