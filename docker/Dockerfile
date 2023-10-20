@@ -61,12 +61,17 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 ##### analyze with gnu
 
-
 # install gnubg
 RUN export DEBIAN_FRONTEND=noninteractive \
 && apt-get -y update \
 && apt-get install -y gnubg
 
-CMD sh -c "ls -l -h -R td-gammon/td_gammon/"
+RUN export DEBIAN_FRONTEND=noninteractive \
+&& apt-get install -y time
+
+# CMD sh -c "head -n 300 td-gammon/td_gammon/test2_output.txt | python analyze_batch_gnu.py zz tmp/" td-gammon/td_gammon/test2_output.txt
+
+# CMD sh -c "ls -l -h -R td-gammon/"
+CMD sh -c "head -n 300 td-gammon/td_gammon/test2_output.txt"
 
 

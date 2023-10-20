@@ -33,9 +33,9 @@ so on windows, e.g.
 $ cat ../test_eval.txt | python ../analyze_batch_td_del.py  t1 "C:\\\\Users\\\\astre\\\\code\\\\my_dellalibera_fork\\\\td-gammon\\\\td_gammon\\\\tmp\\\\"
 '''
 
-gnubg_name = "gnubg-cli.exe"
+#gnubg_name = "gnubg-cli.exe"
 #gnubg_name = "gnubg"
-#gnubg_name = "/usr/games/gnubg"  # for colab.
+gnubg_name = "/usr/games/gnubg"
 
 # On Linux change above to just
 # gnubg_name = "gnubg"
@@ -96,13 +96,11 @@ def is_float (str):
 
 # calls gnubg in a shell process, extracts analysis of game in string and returns.
 def analyze_game(subtest_name, current_file_path, gnubg_match_file_name, gnubg_py_fn):
-    gnubg_cmd = gnubg_name + ' -t --python="'
+    gnubg_cmd = gnubg_name + ' -q -t --python="'  # -q is to prevent sounds
     gnubg_cmd += current_file_path + gnubg_py_fn + '" '
     gnubg_cmd += '| grep mEMG | tail -n 1' # only extract error rates for game.
-    # tail is needed b/c 3 error rates are printed but last is for whole game.
-    
-    print (gnubg_cmd)
-    
+    # tail is needed b/c 3 error rates are printed but last is for whole game.    
+    print (gnubg_cmd)    
     stream = os.popen(gnubg_cmd)
     output = stream.read()
     return output
@@ -181,6 +179,8 @@ current_file_path at top of file.
             if line.strip() == "":
                 # new line, end of game
                 game_in_progress = False
+                
+                #print ("found game_str: " + game_str)
                 error_rates = process_game_str (game_str, current_file_path, test_id, game_id)
                 all_error_rates.extend(error_rates)            
                 game_id += 1
