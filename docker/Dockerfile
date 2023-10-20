@@ -59,6 +59,14 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 && cd td-gammon/td_gammon \
 && python main.py train --lamda 0 --save_path /td-gammon/td_gammon/saved_models --save_step 50 --episodes 100 --name test2 --type nn --hidden_units 40 > test2_output.txt
 
+##### analyze with gnu
+
+
+# install gnubg
+RUN export DEBIAN_FRONTEND=noninteractive \
+&& apt-get -y update \
+&& apt-get install -y gnubg
+
 CMD sh -c "ls -l -h -R td-gammon/td_gammon/"
 
 
