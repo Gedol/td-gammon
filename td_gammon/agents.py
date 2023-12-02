@@ -4,6 +4,9 @@ from itertools import count
 from random import randint, choice
 
 import numpy as np
+import torch
+
+
 from gym_backgammon.envs.backgammon import WHITE, BLACK, COLORS
 
 random.seed(0)
@@ -61,7 +64,8 @@ class TDAgent(Agent):
         best_action = None
 
         if actions:
-            values = [0.0] * len(actions)
+            observations = []
+            
             tmp_counter = env.counter
             env.counter = 0
             state = env.game.save_state()
@@ -69,30 +73,24 @@ class TDAgent(Agent):
             # Iterate over all the legal moves and pick the best action
             for i, action in enumerate(actions):
                 observation, reward, done, info = env.step(action)
-                values[i] = self.net(observation)
-
+                observations.append(observation)
+                
                 # restore the board and other variables (undo the action)
                 env.game.restore_state(state)
 
-            # practical-issues-in-temporal-difference-learning, pag.3
-            # ... the network's output P_t is an estimate of White's probability of winning from board position x_t.
-            # ... the move which is selected at each time step is the move which maximizes P_t when White is to play and minimizes P_t when Black is to play.
-
-            #print ("as: values = " + str(values))
-            #print ("as: values type = " + str(type(values)))
-
-            dvalues = [v.detach() for v in values]
-
-            #print ("as: dvalues = " + str(dvalues))
-            #print ("as: dvalues type = " + str(type(dvalues)))
+            # Make one call to NN per self-play step
+            # NOTE: original code called net in loop above. This way is faster
+            # but it rarely results in slightly different values
+            # causing a different action to be chosen: the pattern was that
+            # occassional in original code when there were ties, in the new
+            # code the last action (of the tied ones) has a slihtly different
+            # value making it the winner.  However the difference was tiny and
+            # may just be an issue with floating point arithmetic.
+            values = self.net(observations)
             
+            best_action_index = int(torch.argmax(values)) if self.color == WHITE else int(torch.argmin(values))
             
-            #best_action_index = int(np.argmax(values)) if self.color == WHITE else int(np.argmin(values))
-            # as modified below to use dvalus
-            best_action_index = int(np.argmax(dvalues)) if self.color == WHITE else int(np.argmin(dvalues))
             best_action = list(actions)[best_action_index]
-            #print ("as : best action index: " + str(best_action_index))
-            #print ("as : best action : " + str(best_action))
             env.counter = tmp_counter
 
         return best_action
@@ -159,12 +157,15 @@ class TDAgentGNU(TDAgent):
 def evaluate_agents(agents, env, n_episodes):
     wins = {WHITE: 0, BLACK: 0}
 
+    gedol_print_for_eval = True # set to true to hackily print out game strin
+    
     for episode in range(n_episodes):
 
         agent_color, first_roll, observation = env.reset()
         agent = agents[agent_color]
 
-        print ("gedol repo, agent first color: ", agent_color)
+        if gedol_print_for_eval:
+            print ("gedol repo, agent first color: ", agent_color)
         
         t = time.time()
 
@@ -249,7 +250,8 @@ def evaluate_agents(agents, env, n_episodes):
                     as_final_game_str += (str(as_move_count) + ") " + as_ms) + "\n"
                     as_move_count += 1
 
-                print (as_final_game_str)
+                if gedol_print_for_eval:
+                    print (as_final_game_str)
                 
                 if winner is not None:
                     wins[agent.color] += 1
