@@ -6,11 +6,15 @@ from itertools import count
 import numpy as np
 import torch
 import torch.nn as nn
+from copy import deepcopy
 
 from agents import TDAgent, RandomAgent, evaluate_agents
+from agents import hr_obs
 from gym_backgammon.envs.backgammon import WHITE, BLACK
 
 torch.set_default_tensor_type('torch.DoubleTensor')
+
+verbose = False
 
 class BaseModel(nn.Module):
     def __init__(self, lr, lamda, seed=123):
@@ -49,7 +53,82 @@ class BaseModel(nn.Module):
         if optimizer is not None:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
 
+    def train_batch(self, batch_obs_updates, batch_r_updates, randomize_batch):
+        if verbose:
+            print(f"as in train_batch, size of obs_up: ", len(batch_obs_updates), ", size of r_upd: ", len(batch_r_updates))
+
+        if randomize_batch:
+            batch_tot = batch_obs_updates + batch_r_updates
+            batch_size = len(batch_tot)
+            if verbose:
+                print(f"as r1, {batch_size=}")
+
+                for t in range (batch_size):
+                    (o_in, o_out) = batch_tot[t]
+                    out_is_r = isinstance(o_out, (float, int))
+
+                    if out_is_r:
+                        print(f"{t=} ", hr_obs(o_in, "input_obs= "), f" {o_out=}, {out_is_r=}")
+                    else:
+                        print(f"{t=} ", hr_obs(o_in, "input_obs= "), hr_obs(o_out, "output_obs= "), f" {out_is_r=}")
+
+                print("\n\n\n")
+                    
+            for t in range (batch_size):
+                rand_samp = random.randrange(batch_size)
+                (o_in, o_out) = batch_tot[rand_samp]
+                out_is_r = isinstance(o_out, (float, int))
+                if verbose:
+                    print(f"{rand_samp=} {out_is_r=}")
+                if out_is_r:
+                    reward = o_out
+                    t_in = self(o_in)
+                    loss = self.update_weights(t_in, reward)
+                    if verbose:
+                        print(f"as: {reward=}", hr_obs(o_in, "o_in="))
+                        print(f"as r3: {loss=}")
+                    t_in = None
+                else:
+                    t_in = self(o_in)
+                    t_out = self(o_out)
+                    loss = self.update_weights(t_in, t_out)
+                    if verbose:
+                        print("as batch, ", hr_obs(o_in, "input_obs= "), hr_obs(o_out, "output_obs= "))
+                        print(f"as r4: {loss=}")
+                    t_in = None
+                    t_out = None
+            return
+        
+        for (o_in, o_out) in batch_obs_updates:
+            #print("as batch, ", hr_obs(o_in, "input_obs= "), hr_obs(o_out, "output_obs= "))
+            t_in = self(o_in)
+            t_out = self(o_out)
+            #print(f"as: {t_in=} {t_out=}")
+            loss = self.update_weights(t_in, t_out)
+            #print(f"as: {loss=}")
+
+        t_in = None
+        t_out = None
+
+        for (o_in, reward) in batch_r_updates:
+            #print(f"as: {reward=}", hr_obs(o_in, "o_in="))
+            t_in = self(o_in)
+            loss = self.update_weights(t_in, reward)
+            #print(f"as: {loss=}")
+            t_in = None
+
+            
     def train_agent(self, env, n_episodes, save_path=None, save_step=0, name_experiment=''):
+
+        cuda_avail = torch.cuda.is_available()
+        print(f"{cuda_avail=}")
+        
+        batch_train = True
+        randomize_batch = True
+        batch_train_num_games = 8  # number of games to wait until training
+        batch_obs_updates = []
+        batch_r_updates = []
+                
         start_episode = self.start_episode
         n_episodes += start_episode
 
@@ -61,31 +140,48 @@ class BaseModel(nn.Module):
         durations = []
         steps = 0
         start_training = time.time()
-
+        
         for episode in range(start_episode, n_episodes):
 
+            if batch_train and (episode % batch_train_num_games == 0):
+                if verbose:
+                    print(f"as bt {episode=} {batch_train_num_games=}")
+
+                self.train_batch(batch_obs_updates, batch_r_updates, randomize_batch)
+                
+                batch_obs_updates = []
+                batch_r_updates = []
+            
             agent_color, first_roll, observation = env.reset()
             agent = agents[agent_color]
 
             t = time.time()
 
             for i in count():
+                
                 if first_roll:
                     roll = first_roll
                     first_roll = None
                 else:
                     roll = agent.roll_dice()
 
-                p = self(observation)
+                if not batch_train:
+                    p = self(observation)
 
                 actions = env.get_valid_actions(roll)
                 action = agent.choose_best_action(actions, env)
                 observation_next, reward, done, winner = env.step(action)
-                p_next = self(observation_next)
+
+                if not batch_train:
+                    p_next = self(observation_next)
 
                 if done:
+                    #print (f"as: done with game {winner=}")
                     if winner is not None:
-                        loss = self.update_weights(p, reward)
+                        if not batch_train:
+                            loss = self.update_weights(p, reward)
+                        else:
+                            batch_r_updates.append((observation, reward))
 
                         wins[agent.color] += 1
 
@@ -98,9 +194,18 @@ class BaseModel(nn.Module):
 
                     durations.append(time.time() - t)
                     steps += i
+                    
                     break
                 else:
-                    loss = self.update_weights(p, p_next)
+                    if not batch_train:
+                        loss = self.update_weights(p, p_next)
+                    else:                        
+                        batch_obs_updates.append((observation, observation_next))
+
+
+                # training over, clear p, and p_next
+                p = None
+                p_next = None
 
                 agent_color = env.get_opponent_agent()
                 agent = agents[agent_color]
@@ -112,6 +217,13 @@ class BaseModel(nn.Module):
                 agents_to_evaluate = {WHITE: TDAgent(WHITE, net=network), BLACK: RandomAgent(BLACK)}
                 evaluate_agents(agents_to_evaluate, env, n_episodes=20)
                 print()
+
+        # finished all episodes one final batch training
+        if batch_train:
+            self.train_batch(batch_obs_updates, batch_r_updates, randomize_batch)
+            batch_obs_updates = []
+            batch_r_updates = []
+
 
         print("\nAverage duration per game: {} seconds".format(round(sum(durations) / n_episodes, 3)))
         print("Average game length: {} plays | Total Duration: {}".format(round(steps / n_episodes, 2), datetime.timedelta(seconds=int(time.time() - start_training))))

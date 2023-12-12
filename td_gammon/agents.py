@@ -12,6 +12,29 @@ from gym_backgammon.envs.backgammon import WHITE, BLACK, COLORS
 random.seed(0)
 
 
+def hr_obs (obs, msg=""):
+    nz = []
+    ones = []
+    length_obs = 0
+    color = None
+    if obs is not None:
+        length_obs = len(obs)
+        for i in range(length_obs):
+            if abs(obs[i] - 0) > 0.0000000001 :
+                nz.append(i)
+            if obs[i] == 1.0:
+                ones.append(i)
+        if obs[196] == 1.0:
+            color = "WHITE"
+        elif obs[197] == 1.0:
+            color = "BLACK"
+
+    nz_hr = None if not nz else nz[1:10]
+    ones_hr = None if not ones else ones[-4:]
+    return f"{msg}, {nz_hr=}, {ones_hr=}, {color=}, {length_obs=}"
+
+
+
 # AGENT ============================================================================================
 
 
